@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: popcat-backend
+  namespace: popcat
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: popcat-backend } }
+  template:
+    metadata: { labels: { app: popcat-backend } }
+    spec:
+      containers:
+      - name: app
+        image: ghcr.io/OWNER/popcat-backend:latest
+        imagePullPolicy: Always
+        env:
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: REDIS_URL
+        ports:
+        - containerPort: 8080
+        readinessProbe: { httpGet: { path: /readyz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
+        livenessProbe:  { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 5, periodSeconds: 10 }
+        resources:
+          requests: { cpu: "50m", memory: "64Mi" }
+          limits:   { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: popcat-backend
+  namespace: popcat
+spec:
+  selector: { app: popcat-backend }
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: popcat-backend-hpa
+  namespace: popcat
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: popcat-backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
